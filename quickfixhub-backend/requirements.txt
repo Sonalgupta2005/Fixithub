@@ -1,0 +1,11 @@
+pymongo
+dnspython
+Flask
+Flask-Login
+Flask-Cors
+Flask-Bcrypt
+
+boto3
+botocore
+
+python-dotenv
