@@ -4,7 +4,7 @@ Flask
 Flask-Login
 Flask-Cors
 Flask-Bcrypt
-
+gunicorn
 boto3
 botocore
 
