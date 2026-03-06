@@ -8,6 +8,7 @@ from routes.provider import provider_bp
 from models.user_model import User
 from db.mongodb import users_collection
 from bson import ObjectId
+import os
 
 app = Flask(__name__)
 app.config.from_object(Config)

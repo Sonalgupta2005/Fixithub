@@ -1,11 +1,11 @@
 pymongo
 dnspython
-Flask
-Flask-Login
-Flask-Cors
-Flask-Bcrypt
+flask
+flask-login
+flask-cors
+flask-bcrypt
 gunicorn
 boto3
 botocore
-
+os
 python-dotenv
