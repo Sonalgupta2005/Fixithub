@@ -6,7 +6,10 @@ load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_URI")
 
-client = MongoClient(MONGO_URI)
+if not MONGO_URI:
+    raise Exception("MONGO_URI is not set")
+
+client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 
 db = client["quickfixhub"]
 

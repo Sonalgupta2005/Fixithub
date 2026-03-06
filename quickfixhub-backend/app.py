@@ -19,7 +19,7 @@ app.config.from_object(Config)
 CORS(
     app,
     supports_credentials=True,
-    origins=["http://localhost:8080"]  # Vite dev server
+    origins=["http://localhost:8080","https://fixithub-liard.vercel.app"]  # Vite dev server
 )
 
 # -----------------------------------------
