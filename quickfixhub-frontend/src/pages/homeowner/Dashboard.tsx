@@ -20,7 +20,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import RequestDetailsDialog from './RequestDetailsDialog';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'https://fixithub-uhlu.onrender.com/api';
 
 const statusConfig: Record<
   ServiceStatus,

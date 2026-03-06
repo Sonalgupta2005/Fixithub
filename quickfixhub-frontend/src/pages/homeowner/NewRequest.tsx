@@ -26,7 +26,7 @@ import {
   Send
 } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'https://fixithub-uhlu.onrender.com/api';
 
 const serviceTypes: { type: ServiceType; name: string; icon: React.ElementType }[] = [
   { type: 'plumbing', name: 'Plumbing', icon: Droplets },

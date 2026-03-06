@@ -21,7 +21,7 @@ import {
   X
 } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:5000/api/provider';
+const API_BASE_URL = 'https://fixithub-uhlu.onrender.com/api/provider';
 
 const statusConfig: Record<ServiceStatus, { label: string; color: string; icon: React.ElementType }> = {
   pending: { label: 'Pending', color: 'bg-warning/10 text-warning', icon: Clock },
