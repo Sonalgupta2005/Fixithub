@@ -32,6 +32,10 @@ login_manager.init_app(app)
 # -----------------------------------------
 # Flask-Login User Loader (MongoDB)
 # -----------------------------------------
+@app.route("/test")
+def test():
+    return "server working"
+
 @login_manager.user_loader
 def load_user(user_id):
     try:
