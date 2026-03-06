@@ -7,5 +7,4 @@ flask-bcrypt
 gunicorn
 boto3
 botocore
-os
 python-dotenv
