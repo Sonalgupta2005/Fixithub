@@ -13,6 +13,10 @@ import os
 auth_bp = Blueprint("auth", __name__)
 
 JWT_SECRET = os.getenv("JWT_SECRET")
+
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET environment variable is not set")
+
 JWT_EXPIRES = 7
 
 
@@ -26,6 +30,7 @@ def create_token(user_id):
     }
 
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
     return token
 
 
@@ -67,11 +72,13 @@ def signup():
     provider_profile_doc = None
 
     if role == "provider":
+
         service_types = data.get("serviceTypes")
         address = data.get("address")
 
         if not service_types or not isinstance(service_types, list) or not address:
             users_collection.delete_one({"_id": ObjectId(user_id)})
+
             return {
                 "success": False,
                 "message": "Providers must specify serviceTypes and address"
@@ -139,9 +146,11 @@ def login():
     }
 
     if user.role == "provider":
+
         profile = provider_profiles_collection.find_one(
             {"provider_id": user.id}
         )
+
         if profile:
             profile["_id"] = str(profile["_id"])
             response["providerProfile"] = profile
@@ -160,10 +169,16 @@ def me():
     if not auth_header:
         return {"success": False, "message": "Token missing"}, 401
 
-    token = auth_header.split(" ")[1]
+    parts = auth_header.split(" ")
+
+    if len(parts) != 2:
+        return {"success": False, "message": "Invalid auth header"}, 401
+
+    token = parts[1]
 
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+
         user_id = payload["user_id"]
 
         user_doc = users_collection.find_one({"_id": ObjectId(user_id)})
@@ -179,9 +194,11 @@ def me():
         }
 
         if user.role == "provider":
+
             profile = provider_profiles_collection.find_one(
                 {"provider_id": user.id}
             )
+
             if profile:
                 profile["_id"] = str(profile["_id"])
                 response["providerProfile"] = profile
@@ -190,6 +207,7 @@ def me():
 
     except jwt.ExpiredSignatureError:
         return {"success": False, "message": "Token expired"}, 401
+
     except jwt.InvalidTokenError:
         return {"success": False, "message": "Invalid token"}, 401
 
