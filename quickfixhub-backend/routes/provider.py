@@ -1,8 +1,9 @@
-from flask import Blueprint, jsonify
-from flask_login import login_required, current_user
+from flask import Blueprint, jsonify, request
+from middleware.auth_middleware import jwt_required
 from db.mongodb import (
     service_requests_collection,
-    service_offers_collection
+    service_offers_collection,
+    users_collection
 )
 from services.provider_matcher import get_ranked_providers
 from services.timeout_service import handle_expired_offers
@@ -16,13 +17,16 @@ provider_bp = Blueprint("provider", __name__)
 # DASHBOARD SUMMARY
 # =========================================================
 @provider_bp.route("/dashboard/summary", methods=["GET"])
-@login_required
+@jwt_required
 def dashboard_summary():
-    if current_user.role != "provider":
+
+    user = request.user
+
+    if user["role"] != "provider":
         return {"success": False}, 403
 
     requests = service_requests_collection.find(
-        {"assigned_provider_id": current_user.id}
+        {"assigned_provider_id": user["_id"]}
     )
 
     completed = 0
@@ -51,25 +55,25 @@ def dashboard_summary():
 # AVAILABLE JOBS
 # =========================================================
 @provider_bp.route("/jobs/available", methods=["GET"])
-@login_required
+@jwt_required
 def available_jobs():
 
-    if current_user.role != "provider":
+    user = request.user
+
+    if user["role"] != "provider":
         return {"success": False}, 403
 
     handle_expired_offers()
 
     offers = list(service_offers_collection.find({
-        "provider_id": current_user.id,
+        "provider_id": str(user["_id"]),
         "status": "offered"
     }))
 
     if not offers:
         return {"success": True, "jobs": []}
 
-    request_ids = [
-        ObjectId(o["request_id"]) for o in offers
-    ]
+    request_ids = [ObjectId(o["request_id"]) for o in offers]
 
     requests = service_requests_collection.find({
         "_id": {"$in": request_ids}
@@ -83,18 +87,20 @@ def available_jobs():
     return {"success": True, "jobs": jobs}
 
 
-
 # =========================================================
 # MY JOBS
 # =========================================================
 @provider_bp.route("/jobs/my", methods=["GET"])
-@login_required
+@jwt_required
 def my_jobs():
-    if current_user.role != "provider":
+
+    user = request.user
+
+    if user["role"] != "provider":
         return {"success": False}, 403
 
     jobs = service_requests_collection.find({
-        "assigned_provider_id": current_user.id,
+        "assigned_provider_id": str(user["_id"]),
         "status": {"$in": ["accepted", "in_progress", "completed"]}
     })
 
@@ -110,42 +116,42 @@ def my_jobs():
 # ACCEPT OFFER
 # =========================================================
 @provider_bp.route("/offers/<request_id>/accept", methods=["POST"])
-@login_required
+@jwt_required
 def accept_offer(request_id):
+
+    user = request.user
+
     offer = service_offers_collection.find_one({
         "request_id": request_id,
-        "provider_id": current_user.id,
+        "provider_id": str(user["_id"]),
         "status": "offered"
     })
 
     if not offer:
         return {"success": False}, 400
 
-    # Mark offer accepted
     service_offers_collection.update_one(
         {"_id": offer["_id"]},
         {"$set": {"status": "accepted"}}
     )
 
-    # Update request
     service_requests_collection.update_one(
         {"_id": ObjectId(request_id)},
         {"$set": {
             "status": "accepted",
-            "assigned_provider_id": current_user.id,
-            "provider_name": current_user.name,
-            "provider_phone": current_user.phone,
-            "provider_email": current_user.email,
+            "assigned_provider_id": str(user["_id"]),
+            "provider_name": user["name"],
+            "provider_phone": user["phone"],
+            "provider_email": user["email"],
             "offer_expires_at": None,
             "updated_at": now_iso()
         }}
     )
 
-    # Expire other offers
     service_offers_collection.update_many(
         {
             "request_id": request_id,
-            "provider_id": {"$ne": current_user.id},
+            "provider_id": {"$ne": str(user["_id"])},
             "status": "offered"
         },
         {"$set": {"status": "expired"}}
@@ -158,25 +164,25 @@ def accept_offer(request_id):
 # REJECT OFFER
 # =========================================================
 @provider_bp.route("/offers/<request_id>/reject", methods=["POST"])
-@login_required
+@jwt_required
 def reject_offer(request_id):
+
+    user = request.user
 
     offer = service_offers_collection.find_one({
         "request_id": request_id,
-        "provider_id": current_user.id,
+        "provider_id": str(user["_id"]),
         "status": "offered"
     })
 
     if not offer:
         return {"success": False}, 400
 
-    # Mark rejected
     service_offers_collection.update_one(
         {"_id": offer["_id"]},
         {"$set": {"status": "rejected"}}
     )
 
-    # Check if other active offers exist
     active = service_offers_collection.find_one({
         "request_id": request_id,
         "status": "offered"
@@ -192,7 +198,6 @@ def reject_offer(request_id):
     if not req:
         return {"success": False}, 404
 
-    # Get previously contacted providers
     contacted = [
         o["provider_id"]
         for o in service_offers_collection.find({"request_id": request_id})
@@ -212,7 +217,6 @@ def reject_offer(request_id):
         )
         return {"success": True}
 
-    # Offer next batch
     for pid in fresh[:3]:
         service_offers_collection.insert_one({
             "request_id": request_id,
@@ -237,13 +241,15 @@ def reject_offer(request_id):
 # START JOB
 # =========================================================
 @provider_bp.route("/jobs/<request_id>/start", methods=["POST"])
-@login_required
+@jwt_required
 def start_job(request_id):
+
+    user = request.user
 
     result = service_requests_collection.update_one(
         {
             "_id": ObjectId(request_id),
-            "assigned_provider_id": current_user.id,
+            "assigned_provider_id": str(user["_id"]),
             "status": "accepted"
         },
         {"$set": {
@@ -262,13 +268,15 @@ def start_job(request_id):
 # COMPLETE JOB
 # =========================================================
 @provider_bp.route("/jobs/<request_id>/complete", methods=["POST"])
-@login_required
+@jwt_required
 def complete_job(request_id):
+
+    user = request.user
 
     result = service_requests_collection.update_one(
         {
             "_id": ObjectId(request_id),
-            "assigned_provider_id": current_user.id,
+            "assigned_provider_id": str(user["_id"]),
             "status": "in_progress"
         },
         {"$set": {

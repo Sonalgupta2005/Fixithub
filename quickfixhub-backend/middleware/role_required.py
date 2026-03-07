@@ -1,11 +1,11 @@
 from flask import session, jsonify
 from functools import wraps
-from flask_login import login_required
+from middleware.auth_middleware import jwt_required
 
 def role_required(role):
     def wrapper(fn):
         @wraps(fn)
-        @login_required
+        @jwt_required
         def decorated(*args, **kwargs):
             if session.get("role") != role:
                 return jsonify({"error": "Unauthorized"}), 403

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 
 const API_BASE_URL = 'https://fixithub-uhlu.onrender.com/api';
+const token = localStorage.getItem("token");
 
 const serviceTypes: { type: ServiceType; name: string; icon: React.ElementType }[] = [
   { type: 'plumbing', name: 'Plumbing', icon: Droplets },
@@ -88,19 +89,19 @@ const NewRequest: React.FC = () => {
 
     try {
       const response = await fetch(`${API_BASE_URL}/service/requests`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          serviceType: formData.serviceType,
-          description: formData.description,
-          address: formData.address,
-          preferredDate: formData.preferredDate,
-          preferredTime: formData.preferredTime,
-        }),
-      });
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`
+  },
+  body: JSON.stringify({
+    serviceType: formData.serviceType,
+    description: formData.description,
+    address: formData.address,
+    preferredDate: formData.preferredDate,
+    preferredTime: formData.preferredTime,
+  }),
+});
 
       const data = await response.json();
 

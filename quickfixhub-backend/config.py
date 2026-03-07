@@ -8,3 +8,5 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "None"
     SESSION_COOKIE_SECURE = True  # True in production (HTTPS)
+    JWT_SECRET = os.getenv("JWT_SECRET")
+    JWT_EXPIRES = 7

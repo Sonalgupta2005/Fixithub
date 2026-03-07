@@ -5,35 +5,48 @@ import React, {
   useCallback,
   ReactNode,
   useEffect,
-} from 'react';
-import { User, AuthState } from '@/types';
+} from "react";
+import { User, AuthState } from "@/types";
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<User | null>;
   signup: (userData: Partial<User> & { password: string }) => Promise<User | null>;
-  logout: () => Promise<void>;
+  logout: () => void;
   setUser: (user: User | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE_URL = 'https://fixithub-uhlu.onrender.com/api';
+const API_BASE_URL = "https://fixithub-uhlu.onrender.com/api";
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
     isAuthenticated: false,
-    isLoading: true, // 🔥 Start true until /auth/me resolves
+    isLoading: true,
   });
 
-  /* ========================================
-     LOAD SESSION ON APP START
-  ======================================== */
+  const getToken = () => localStorage.getItem("token");
+
+  // Restore session on refresh
   useEffect(() => {
-    const checkSession = async () => {
+    const restoreSession = async () => {
+      const token = getToken();
+
+      if (!token) {
+        setAuthState({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+        });
+        return;
+      }
+
       try {
         const res = await fetch(`${API_BASE_URL}/auth/me`, {
-          credentials: 'include',
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
         });
 
         const data = await res.json();
@@ -45,6 +58,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             isLoading: false,
           });
         } else {
+          localStorage.removeItem("token");
           setAuthState({
             user: null,
             isAuthenticated: false,
@@ -60,70 +74,67 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     };
 
-    checkSession();
+    restoreSession();
   }, []);
 
-  /* ========================================
-     LOGIN
-  ======================================== */
-  const login = useCallback(
-    async (email: string, password: string): Promise<User | null> => {
-      setAuthState(prev => ({ ...prev, isLoading: true }));
+  const login = useCallback(async (email: string, password: string): Promise<User | null> => {
+    setAuthState(prev => ({ ...prev, isLoading: true }));
 
-      try {
-        const response = await fetch(`${API_BASE_URL}/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email, password }),
-        });
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-        const data = await response.json();
+      const data = await res.json();
 
-        if (data.success && data.user) {
-          setAuthState({
-            user: data.user,
-            isAuthenticated: true,
-            isLoading: false,
-          });
-
-          return data.user; // ✅ return actual user
-        }
+      if (data.success && data.token) {
+        localStorage.setItem("token", data.token);
 
         setAuthState({
-          user: null,
-          isAuthenticated: false,
+          user: data.user,
+          isAuthenticated: true,
           isLoading: false,
         });
 
-        return null;
-      } catch (error) {
-        console.error('Login error:', error);
-        setAuthState(prev => ({ ...prev, isLoading: false }));
-        return null;
+        return data.user;
       }
-    },
-    []
-  );
 
-  /* ========================================
-     SIGNUP
-  ======================================== */
+      setAuthState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+      });
+
+      return null;
+    } catch (error) {
+      console.error("Login error:", error);
+      setAuthState(prev => ({ ...prev, isLoading: false }));
+      return null;
+    }
+  }, []);
+
   const signup = useCallback(
     async (userData: Partial<User> & { password: string }): Promise<User | null> => {
       setAuthState(prev => ({ ...prev, isLoading: true }));
 
       try {
-        const response = await fetch(`${API_BASE_URL}/auth/signup`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
+        const res = await fetch(`${API_BASE_URL}/auth/signup`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(userData),
         });
 
-        const data = await response.json();
+        const data = await res.json();
 
-        if (data.success && data.user) {
+        if (data.success && data.token) {
+          localStorage.setItem("token", data.token);
+
           setAuthState({
             user: data.user,
             isAuthenticated: true,
@@ -136,7 +147,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setAuthState(prev => ({ ...prev, isLoading: false }));
         return null;
       } catch (error) {
-        console.error('Signup error:', error);
+        console.error("Signup error:", error);
         setAuthState(prev => ({ ...prev, isLoading: false }));
         return null;
       }
@@ -144,18 +155,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     []
   );
 
-  /* ========================================
-     LOGOUT
-  ======================================== */
-  const logout = useCallback(async () => {
-    try {
-      await fetch(`${API_BASE_URL}/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
+  const logout = useCallback(() => {
+    localStorage.removeItem("token");
 
     setAuthState({
       user: null,
@@ -164,9 +165,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   }, []);
 
-  /* ========================================
-     MANUAL USER SETTER
-  ======================================== */
   const setUser = useCallback((user: User | null) => {
     setAuthState({
       user,
@@ -190,13 +188,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 };
 
-/* ========================================
-   HOOK
-======================================== */
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
+    throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
 };

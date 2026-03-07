@@ -1,15 +1,32 @@
-from flask import Blueprint, request, jsonify, session
-from flask_login import login_user, logout_user, login_required, current_user
+from flask import Blueprint, request, jsonify
 from extensions import bcrypt
 from models.user_model import User
 from db.mongodb import (
     users_collection,
     provider_profiles_collection
 )
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson import ObjectId
+import jwt
+import os
 
 auth_bp = Blueprint("auth", __name__)
+
+JWT_SECRET = os.getenv("JWT_SECRET")
+JWT_EXPIRES = 7
+
+
+# =====================================================
+# CREATE TOKEN
+# =====================================================
+def create_token(user_id):
+    payload = {
+        "user_id": str(user_id),
+        "exp": datetime.utcnow() + timedelta(days=JWT_EXPIRES)
+    }
+
+    token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+    return token
 
 
 # =====================================================
@@ -73,11 +90,11 @@ def signup():
     user_doc = users_collection.find_one({"_id": ObjectId(user_id)})
     user = User(user_doc)
 
-    login_user(user)
-    session["role"] = role
+    token = create_token(user.id)
 
     response = {
         "success": True,
+        "token": token,
         "user": user.to_dict()
     }
 
@@ -113,11 +130,11 @@ def login():
 
     user = User(user_doc)
 
-    login_user(user)
-    session["role"] = user.role
+    token = create_token(user.id)
 
     response = {
         "success": True,
+        "token": token,
         "user": user.to_dict()
     }
 
@@ -133,33 +150,53 @@ def login():
 
 
 # =====================================================
-# SESSION RESTORE
+# CURRENT USER
 # =====================================================
 @auth_bp.route("/me", methods=["GET"])
-@login_required
 def me():
-    response = {
-        "success": True,
-        "user": current_user.to_dict()
-    }
 
-    if current_user.role == "provider":
-        profile = provider_profiles_collection.find_one(
-            {"provider_id": current_user.id}
-        )
-        if profile:
-            profile["_id"] = str(profile["_id"])
-            response["providerProfile"] = profile
+    auth_header = request.headers.get("Authorization")
 
-    return jsonify(response)
+    if not auth_header:
+        return {"success": False, "message": "Token missing"}, 401
+
+    token = auth_header.split(" ")[1]
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        user_id = payload["user_id"]
+
+        user_doc = users_collection.find_one({"_id": ObjectId(user_id)})
+
+        if not user_doc:
+            return {"success": False}, 401
+
+        user = User(user_doc)
+
+        response = {
+            "success": True,
+            "user": user.to_dict()
+        }
+
+        if user.role == "provider":
+            profile = provider_profiles_collection.find_one(
+                {"provider_id": user.id}
+            )
+            if profile:
+                profile["_id"] = str(profile["_id"])
+                response["providerProfile"] = profile
+
+        return jsonify(response)
+
+    except jwt.ExpiredSignatureError:
+        return {"success": False, "message": "Token expired"}, 401
+    except jwt.InvalidTokenError:
+        return {"success": False, "message": "Invalid token"}, 401
 
 
 # =====================================================
 # LOGOUT
 # =====================================================
 @auth_bp.route("/logout", methods=["POST"])
-@login_required
 def logout():
-    logout_user()
-    session.clear()
     return jsonify({"success": True})

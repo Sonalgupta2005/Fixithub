@@ -36,6 +36,7 @@ const statusConfig: Record<ServiceStatus, { label: string; color: string; icon: 
 const ProviderDashboard: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const token = localStorage.getItem("token");
 
   const [availableRequests, setAvailableRequests] = useState<ServiceRequest[]>([]);
   const [myJobs, setMyJobs] = useState<ServiceRequest[]>([]);
@@ -43,22 +44,21 @@ const ProviderDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'available' | 'my-jobs'>('available');
   const [loading, setLoading] = useState(true);
 
-  /* ============================
-     LOAD DASHBOARD DATA
-     ============================ */
   useEffect(() => {
     const loadDashboard = async () => {
       try {
+        const headers = { Authorization: `Bearer ${token}` };
+
         const [statsRes, availableRes, myJobsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/dashboard/summary`, { credentials: 'include' }),
-          fetch(`${API_BASE_URL}/jobs/available`, { credentials: 'include' }),
-          fetch(`${API_BASE_URL}/jobs/my`, { credentials: 'include' }),
+          fetch(`${API_BASE_URL}/dashboard/summary`, { headers }),
+          fetch(`${API_BASE_URL}/jobs/available`, { headers }),
+          fetch(`${API_BASE_URL}/jobs/my`, { headers }),
         ]);
 
         const statsData = await statsRes.json();
         const availableData = await availableRes.json();
         const myJobsData = await myJobsRes.json();
-        console.log(myJobsData);
+
         setStats([
           { label: 'Jobs Completed', value: statsData.stats.jobsCompleted, icon: CheckCircle, color: 'text-success' },
           { label: 'Active Jobs', value: statsData.stats.activeJobs, icon: Briefcase, color: 'text-accent' },
@@ -66,8 +66,8 @@ const ProviderDashboard: React.FC = () => {
           { label: 'Earnings', value: `$${statsData.stats.earnings}`, icon: DollarSign, color: 'text-success' },
         ]);
 
-        setAvailableRequests(availableData.jobs);
-        setMyJobs(myJobsData.jobs);
+        setAvailableRequests(availableData.jobs || []);
+        setMyJobs(myJobsData.jobs || []);
       } catch {
         toast({ title: 'Failed to load dashboard', variant: 'destructive' });
       } finally {
@@ -76,15 +76,12 @@ const ProviderDashboard: React.FC = () => {
     };
 
     loadDashboard();
-  }, []);
+  }, [token, toast]);
 
-  /* ============================
-     ACTION HANDLERS
-     ============================ */
   const handleAcceptJob = async (requestId: string) => {
     const res = await fetch(`${API_BASE_URL}/offers/${requestId}/accept`, {
       method: 'POST',
-      credentials: 'include',
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     if (!res.ok) {
@@ -96,14 +93,18 @@ const ProviderDashboard: React.FC = () => {
 
     setAvailableRequests(prev => prev.filter(r => r._id !== requestId));
 
-    const myJobsRes = await fetch(`${API_BASE_URL}/jobs/my`, { credentials: 'include' });
+    const myJobsRes = await fetch(`${API_BASE_URL}/jobs/my`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
     const myJobsData = await myJobsRes.json();
-    setMyJobs(myJobsData.jobs);
+    setMyJobs(myJobsData.jobs || []);
   };
-   const handleReject = async (requestId: string) => {
+
+  const handleReject = async (requestId: string) => {
     const res = await fetch(`${API_BASE_URL}/offers/${requestId}/reject`, {
       method: 'POST',
-      credentials: 'include',
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     if (!res.ok) {
@@ -119,7 +120,7 @@ const ProviderDashboard: React.FC = () => {
   const handleStartJob = async (requestId: string) => {
     await fetch(`${API_BASE_URL}/jobs/${requestId}/start`, {
       method: 'POST',
-      credentials: 'include',
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     setMyJobs(prev =>
@@ -132,7 +133,7 @@ const ProviderDashboard: React.FC = () => {
   const handleCompleteJob = async (requestId: string) => {
     await fetch(`${API_BASE_URL}/jobs/${requestId}/complete`, {
       method: 'POST',
-      credentials: 'include',
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     setMyJobs(prev => prev.filter(j => j._id !== requestId));
@@ -140,28 +141,23 @@ const ProviderDashboard: React.FC = () => {
     toast({ title: 'Job Completed!' });
   };
 
-  /* ============================
-     LOADING STATE
-     ============================ */
   if (loading) {
     return (
       <Layout>
-        <div className="p-12 text-center text-muted-foreground">Loading dashboard...</div>
+        <div className="p-12 text-center text-muted-foreground">
+          Loading dashboard...
+        </div>
       </Layout>
     );
   }
 
-  /* ============================
-     UI
-     ============================ */
   return (
     <Layout>
       <div className="min-h-screen bg-background py-8">
         <div className="container mx-auto px-4">
 
-          {/* Header */}
           <div className="mb-8">
-            <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground">
+            <h1 className="font-display text-2xl md:text-3xl font-bold">
               Welcome back, {user?.name || 'Provider'}!
             </h1>
             <p className="text-muted-foreground mt-1">
@@ -169,7 +165,6 @@ const ProviderDashboard: React.FC = () => {
             </p>
           </div>
 
-          {/* Stats */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {stats.map(stat => (
               <div key={stat.label} className="bg-card rounded-xl p-5 border border-border">
@@ -186,7 +181,6 @@ const ProviderDashboard: React.FC = () => {
             ))}
           </div>
 
-          {/* Tabs */}
           <div className="flex gap-4 mb-6">
             <button
               onClick={() => setActiveTab('available')}
@@ -211,40 +205,42 @@ const ProviderDashboard: React.FC = () => {
             </button>
           </div>
 
-          {/* Job Cards */}
           <div className="space-y-4">
 
-            {/* AVAILABLE JOBS */}
             {activeTab === 'available' && availableRequests.map(request => (
               <div key={request._id} className="bg-card rounded-xl border border-border p-6">
                 <div className="flex justify-between gap-4">
                   <div>
-                    <h3 className="font-semibold text-lg capitalize">{request.service_type} Service</h3>
+                    <h3 className="font-semibold text-lg capitalize">
+                      {request.service_type} Service
+                    </h3>
+
                     <p className="mb-3">{request.description}</p>
+
                     <div className="flex gap-4 text-sm text-muted-foreground">
                       <span><Calendar className="inline w-4 h-4" /> {request.preferred_date}</span>
                       <span><MapPin className="inline w-4 h-4" /> {request.address}</span>
                       <span><User className="inline w-4 h-4" /> {request.user_name}</span>
                     </div>
                   </div>
-                  <div className='flex gap-2'>
-                   <Button 
-                      variant="outline" 
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="text-destructive hover:bg-destructive/10"
                       onClick={() => handleReject(request._id)}
                     >
-                      <X className="w-4 h-4 mr-1" />
-                      Reject
+                      <X className="w-4 h-4 mr-1" /> Reject
                     </Button>
-                  <Button variant="accent" onClick={() => handleAcceptJob(request._id)}>
-                    Accept Job
-                  </Button>
+
+                    <Button variant="accent" onClick={() => handleAcceptJob(request._id)}>
+                      Accept Job
+                    </Button>
                   </div>
                 </div>
               </div>
             ))}
 
-            {/* MY JOBS */}
             {activeTab === 'my-jobs' && myJobs.map(job => {
               const status = statusConfig[job.status];
               const StatusIcon = status.icon;
@@ -253,7 +249,10 @@ const ProviderDashboard: React.FC = () => {
                 <div key={job._id} className="bg-card rounded-xl border border-border p-6">
                   <div className="flex justify-between gap-4">
                     <div>
-                      <h3 className="font-semibold text-lg capitalize">{job.service_type} Service</h3>
+                      <h3 className="font-semibold text-lg capitalize">
+                        {job.service_type} Service
+                      </h3>
+
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs ${status.color}`}>
                         <StatusIcon className="w-3 h-3" /> {status.label}
                       </span>
@@ -273,8 +272,9 @@ const ProviderDashboard: React.FC = () => {
                           <Play className="w-4 h-4 mr-2" /> Start Job
                         </Button>
                       )}
+
                       {job.status === 'in_progress' && (
-                        <Button variant="success" onClick={() => handleCompleteJob(job._id)}>
+                        <Button variant="default" onClick={() => handleCompleteJob(job._id)}>
                           <Check className="w-4 h-4 mr-2" /> Complete
                         </Button>
                       )}
@@ -283,20 +283,6 @@ const ProviderDashboard: React.FC = () => {
                 </div>
               );
             })}
-             {((activeTab === 'available' && availableRequests.length === 0) || 
-              (activeTab === 'my-jobs' && myJobs.length === 0)) && (
-              <div className="bg-card rounded-xl border border-border p-12 text-center">
-                <Briefcase className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold text-foreground mb-2">
-                  {activeTab === 'available' ? 'No Available Jobs' : 'No Active Jobs'}
-                </h3>
-                <p className="text-muted-foreground">
-                  {activeTab === 'available' 
-                    ? 'Check back soon for new service requests in your area.'
-                    : 'Accept available jobs to see them here.'}
-                </p>
-              </div>
-            )}
 
           </div>
         </div>

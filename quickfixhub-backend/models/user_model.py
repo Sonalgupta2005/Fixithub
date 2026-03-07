@@ -1,13 +1,11 @@
-from flask_login import UserMixin
-
-class User(UserMixin):
+class User:
     def __init__(self, doc):
-        self.id = str(doc["_id"])      # REQUIRED for Flask-Login
+        self.id = str(doc["_id"])
         self.name = doc["name"]
         self.email = doc["email"]
         self.role = doc["role"]
-        self.phone = doc["phone"]
-        self.created_at = doc["created_at"]
+        self.phone = doc.get("phone")
+        self.created_at = doc.get("created_at")
 
     def to_dict(self):
         return {

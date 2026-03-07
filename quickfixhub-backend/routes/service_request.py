@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_login import login_required, current_user
+from middleware.auth_middleware import jwt_required
 from db.mongodb import (
     service_requests_collection,
     service_offers_collection
@@ -17,9 +17,10 @@ service_bp = Blueprint("service", __name__)
 # CREATE SERVICE REQUEST
 # ==========================================================
 @service_bp.route("/requests", methods=["POST"])
-@login_required
+@jwt_required
 def create_service_request():
 
+    user = request.user
     data = request.get_json()
 
     required_fields = [
@@ -38,14 +39,11 @@ def create_service_request():
 
     now = now_iso()
 
-    # ---------------------------------------
-    # 1️⃣ CREATE REQUEST AS PENDING
-    # ---------------------------------------
     request_doc = {
-        "user_id": current_user.id,
-        "user_name": current_user.name,
-        "user_email": current_user.email,
-        "user_phone": current_user.phone,
+        "user_id": str(user["_id"]),
+        "user_name": user["name"],
+        "user_email": user["email"],
+        "user_phone": user["phone"],
         "service_type": data["serviceType"],
         "description": data["description"],
         "address": data["address"],
@@ -62,14 +60,11 @@ def create_service_request():
     result = service_requests_collection.insert_one(request_doc)
     request_id = result.inserted_id
 
-    # Fetch full Mongo document (needed by offer_service)
     created_request = service_requests_collection.find_one(
         {"_id": request_id}
     )
 
-    # ---------------------------------------
-    # 2️⃣ MATCH PROVIDERS
-    # ---------------------------------------
+    # Match providers
     ranked_providers = get_ranked_providers(
         service_type=created_request["service_type"],
         address=created_request["address"]
@@ -77,11 +72,7 @@ def create_service_request():
 
     provider_ids = [pid for pid, _ in ranked_providers[:3]]
 
-    # ---------------------------------------
-    # 3️⃣ OFFER OR EXPIRE
-    # ---------------------------------------
     if provider_ids:
-        # Use service layer (handles duplicates safely)
         offer_request_to_providers(created_request, provider_ids)
     else:
         service_requests_collection.update_one(
@@ -92,7 +83,6 @@ def create_service_request():
             }}
         )
 
-    # Return fresh updated document
     final_doc = service_requests_collection.find_one(
         {"_id": request_id}
     )
@@ -105,18 +95,19 @@ def create_service_request():
     }, 201
 
 
-
 # ==========================================================
 # HOMEOWNER: GET MY REQUESTS
 # ==========================================================
 @service_bp.route("/my-requests", methods=["GET"])
-@login_required
+@jwt_required
 def get_my_requests():
+
+    user = request.user
 
     handle_expired_offers()
 
     requests = service_requests_collection.find({
-        "user_id": current_user.id
+        "user_id": str(user["_id"])
     })
 
     result = []
@@ -134,7 +125,7 @@ def get_my_requests():
 # GET ALL REQUESTS (TEMP)
 # ==========================================================
 @service_bp.route("/all", methods=["GET"])
-@login_required
+@jwt_required
 def get_all_requests():
 
     requests = service_requests_collection.find()
@@ -154,8 +145,10 @@ def get_all_requests():
 # CANCEL SERVICE REQUEST
 # ==========================================================
 @service_bp.route("/requests/<request_id>/cancel", methods=["POST"])
-@login_required
+@jwt_required
 def cancel_service_request(request_id):
+
+    user = request.user
 
     req = service_requests_collection.find_one({
         "_id": ObjectId(request_id)
@@ -164,7 +157,7 @@ def cancel_service_request(request_id):
     if not req:
         return {"success": False, "message": "Not found"}, 404
 
-    if req["user_id"] != current_user.id:
+    if req["user_id"] != str(user["_id"]):
         return {"success": False, "message": "Forbidden"}, 403
 
     if req["status"] in ["in_progress", "completed", "expired", "cancelled"]:
@@ -182,7 +175,6 @@ def cancel_service_request(request_id):
         }}
     )
 
-    # Expire active offers
     service_offers_collection.update_many(
         {
             "request_id": request_id,

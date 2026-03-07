@@ -1,10 +1,10 @@
 pymongo
 dnspython
 flask
-flask-login
 flask-cors
 flask-bcrypt
 gunicorn
 boto3
 botocore
 python-dotenv
+PyJWT

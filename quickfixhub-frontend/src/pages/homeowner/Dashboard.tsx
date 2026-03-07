@@ -37,6 +37,7 @@ const statusConfig: Record<
 
 const HomeownerDashboard: React.FC = () => {
   const { user } = useAuth();
+  const token = localStorage.getItem("token");
 
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,22 +45,31 @@ const HomeownerDashboard: React.FC = () => {
   const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  // 🔥 FETCH REAL DATA
   useEffect(() => {
-    fetch(`${API_BASE_URL}/service/my-requests`, {
-      credentials: 'include',
-    })
-      .then(res => res.json())
-      .then(data => {
+    const loadRequests = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/service/my-requests`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const data = await res.json();
+
         if (data.success) {
           setRequests(data.requests);
+        } else {
+          throw new Error("Failed to load requests");
         }
-      })
-      .catch(() => {
+      } catch {
         setRequests([]);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadRequests();
+  }, [token]);
 
   const stats = [
     {
@@ -80,39 +90,60 @@ const HomeownerDashboard: React.FC = () => {
       icon: Wrench,
     },
   ];
-  const handleCancel = async (id: string) => {
-    await fetch(`${API_BASE_URL}/service/requests/${id}/cancel`, {
-      method: 'POST',
-      credentials: 'include',
-    });
 
-    setRequests(prev =>
-      prev.map(r => r._id === id ? { ...r, status: 'cancelled' } : r)
-    );
-    toast({
-      title: 'Request Cancelled',
-      description: 'Your service request has been cancelled successfully.',
-    });
+  const handleCancel = async (id: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/service/requests/${id}/cancel`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        throw new Error("Failed to cancel request");
+      }
+
+      setRequests(prev =>
+        prev.map(r => r._id === id ? { ...r, status: 'cancelled' } : r)
+      );
+
+      toast({
+        title: 'Request Cancelled',
+        description: 'Your service request has been cancelled successfully.',
+      });
+    } catch {
+      toast({
+        title: "Error",
+        description: "Failed to cancel request",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleViewDetails = (request: ServiceRequest) => {
     setSelectedRequest(request);
     setDetailsOpen(true);
   };
+
   return (
     <Layout>
       <div className="min-h-screen bg-background py-8">
         <div className="container mx-auto px-4">
+
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
             <div>
               <h1 className="font-display text-2xl md:text-3xl font-bold text-foreground">
-                Welcome back, {user?.name|| 'Homeowner'}!
+                Welcome back, {user?.name || 'Homeowner'}!
               </h1>
               <p className="text-muted-foreground mt-1">
                 Manage your service requests and track their progress.
               </p>
             </div>
+
             <Button variant="accent" size="lg" asChild>
               <Link to="/homeowner/new-request">
                 <Plus className="w-5 h-5 mr-2" />
@@ -121,7 +152,6 @@ const HomeownerDashboard: React.FC = () => {
             </Button>
           </div>
 
-          {/* Loading State */}
           {loading ? (
             <div className="flex justify-center items-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -152,7 +182,7 @@ const HomeownerDashboard: React.FC = () => {
                 ))}
               </div>
 
-              {/* Requests List */}
+              {/* Requests */}
               <div className="bg-card rounded-xl border border-border overflow-hidden">
                 <div className="p-6 border-b border-border">
                   <h2 className="font-display text-xl font-semibold text-foreground">
@@ -181,6 +211,7 @@ const HomeownerDashboard: React.FC = () => {
                     {requests.map(request => {
                       const status = statusConfig[request.status];
                       const StatusIcon = status.icon;
+
                       const canCancel = ['offered', 'accepted'].includes(request.status);
                       const canViewDetails = ['accepted', 'in_progress', 'completed'].includes(request.status);
 
@@ -190,14 +221,14 @@ const HomeownerDashboard: React.FC = () => {
                           className="p-6 hover:bg-secondary/30 transition-colors"
                         >
                           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
                                 <h3 className="font-semibold text-foreground capitalize">
                                   {request.service_type} Service
                                 </h3>
-                                <span
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}
-                                >
+
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>
                                   <StatusIcon className="w-3 h-3" />
                                   {status.label}
                                 </span>
@@ -211,13 +242,13 @@ const HomeownerDashboard: React.FC = () => {
                                 <span className="flex items-center gap-1.5">
                                   <Calendar className="w-4 h-4" />
                                   {request.preferred_date}
-                                  {request.preferred_time &&
-                                    ` at ${request.preferred_time}`}
                                 </span>
+
                                 <span className="flex items-center gap-1.5">
                                   <MapPin className="w-4 h-4" />
                                   {request.address}
                                 </span>
+
                                 {request.provider_name && (
                                   <span className="flex items-center gap-1.5">
                                     <User className="w-4 h-4" />
@@ -226,30 +257,32 @@ const HomeownerDashboard: React.FC = () => {
                                 )}
                               </div>
                             </div>
-                            
-                             <div className="flex items-center gap-2">
-                              
+
+                            <div className="flex items-center gap-2">
                               {canCancel && (
-                                <Button 
-                                  variant="outline" 
+                                <Button
+                                  variant="outline"
                                   size="sm"
-                                  className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+                                  className="text-destructive hover:bg-destructive/10"
                                   onClick={() => handleCancel(request._id)}
                                 >
                                   <X className="w-4 h-4 mr-1" />
                                   Cancel
                                 </Button>
                               )}
+
                               {canViewDetails && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleViewDetails(request)}
                                 >
-                                  View Details <ArrowRight className="w-4 h-4 ml-2" />
+                                  View Details
+                                  <ArrowRight className="w-4 h-4 ml-2" />
                                 </Button>
                               )}
                             </div>
+
                           </div>
                         </div>
                       );
@@ -259,15 +292,17 @@ const HomeownerDashboard: React.FC = () => {
               </div>
             </>
           )}
+
         </div>
       </div>
+
       {selectedRequest && (
-  <RequestDetailsDialog
-    request={selectedRequest}
-    open={detailsOpen}
-    onOpenChange={setDetailsOpen}
-  />
-)}
+        <RequestDetailsDialog
+          request={selectedRequest}
+          open={detailsOpen}
+          onOpenChange={setDetailsOpen}
+        />
+      )}
 
     </Layout>
   );
